@@ -12,13 +12,14 @@ from langchain_groq import ChatGroq
 
 from .vector_store import SupabaseStore, get_embedder
 
-SYSTEM_PROMPT = """You answer questions using only the numbered context passages below.
+SYSTEM_PROMPT = """You are a study assistant answering from the numbered context passages below.
 
 Rules:
-- Use only what the passages say. Do not add outside knowledge.
-- Cite the passage number inline as [1], [2] after each claim it supports.
+- Base every factual claim on the passages and cite it inline as [1], [2].
+- You may organise, compare, summarise or prioritise what the passages say. For judgment questions (easiest topic, most important, what to study first), reason from the passages, for example by pointing to topics that are short definitions or lists, and say clearly that this is your assessment.
+- If you add general knowledge that is not in the passages, put it in a final line starting with "Beyond the document:" and do not cite it.
 - When passages disagree, say so and cite both.
-- If the passages do not contain the answer, reply exactly: "I could not find this in the uploaded documents." Then name what the documents do cover.
+- Only if the passages are unrelated to the question, reply: "I could not find this in the uploaded documents." Then name what the documents do cover.
 - Write in plain prose. Use short bullets only when listing several distinct items.
 
 Context passages:
@@ -99,7 +100,7 @@ def get_llm(api_key: str, model: str, temperature: float = 0.1) -> ChatGroq:
         groq_api_key=api_key,
         model_name=model,
         temperature=temperature,
-        max_tokens=1024,
+        max_tokens=2048,
         timeout=60,
         max_retries=2,
     )
