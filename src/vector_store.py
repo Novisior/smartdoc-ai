@@ -21,6 +21,17 @@ class VectorStoreError(RuntimeError):
     """Raised when Supabase rejects a read or write."""
 
 
+def _strip_nul(value: Any) -> Any:
+    """Recursively remove NUL characters, which Postgres cannot store."""
+    if isinstance(value, str):
+        return value.replace("\x00", "").replace("\u0000", "")
+    if isinstance(value, dict):
+        return {k: _strip_nul(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_strip_nul(v) for v in value]
+    return value
+
+
 @st.cache_resource(show_spinner=False)
 def get_embedder(model_name: str = EMBEDDING_MODEL):
     """Load the sentence-transformers model once per session.
@@ -99,10 +110,12 @@ class SupabaseStore:
         if len(records) != len(embeddings):
             raise VectorStoreError("Chunk and embedding counts do not match.")
 
+        # Last line of defence: strip NUL characters from every text and
+        # metadata value right before it goes to Postgres.
         rows = [
             {
-                "content": record["content"],
-                "metadata": record["metadata"],
+                "content": _strip_nul(record["content"]),
+                "metadata": _strip_nul(record["metadata"]),
                 "embedding": vector,
             }
             for record, vector in zip(records, embeddings)
