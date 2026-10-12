@@ -31,10 +31,10 @@ STORAGE_BUCKET = "documents"
 
 # --- LLM -------------------------------------------------------------------
 AVAILABLE_MODELS = [
-    "llama-3.1-8b-instant",
-    "llama-3.3-70b-versatile",
+    "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b",
 ]
-DEFAULT_MODEL = "llama-3.1-8b-instant"
+DEFAULT_MODEL = "openai/gpt-oss-20b"
 DEFAULT_TEMPERATURE = 0.1
 DEFAULT_TOP_K = 4
 
