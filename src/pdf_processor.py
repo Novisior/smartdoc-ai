@@ -14,6 +14,11 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from .config import CHUNK_OVERLAP, CHUNK_SIZE
 
 
+def clean_text(text: str | None) -> str:
+    """Remove NUL characters, which Postgres text/jsonb columns cannot store."""
+    return (text or "").replace("\x00", "").replace("\u0000", "")
+
+
 def file_hash(data: bytes) -> str:
     """Short stable id for a file, used to detect re-uploads."""
     return hashlib.sha256(data).hexdigest()[:16]
@@ -41,9 +46,10 @@ def load_pdf(file_bytes: bytes, filename: str) -> list[Document]:
             os.unlink(tmp_path)
 
     for page in pages:
+        page.page_content = clean_text(page.page_content)
         # PyPDFLoader pages are 0-indexed; humans count from 1.
         page.metadata["page"] = int(page.metadata.get("page", 0)) + 1
-        page.metadata["source"] = filename
+        page.metadata["source"] = clean_text(filename)
     return pages
 
 
@@ -64,19 +70,19 @@ def chunk_pdf(
     records: list[dict[str, Any]] = []
     doc_id = file_hash(file_bytes)
     for index, chunk in enumerate(chunks):
-        text = chunk.page_content.strip()
+        text = clean_text(chunk.page_content).strip()
         if len(text) < 20:
             continue
         records.append(
             {
                 "content": text,
                 "metadata": {
-                    "source": filename,
+                    "source": clean_text(filename),
                     "page": chunk.metadata.get("page", 1),
                     "chunk_index": index,
                     "doc_id": doc_id,
-                    "storage_path": storage_path,
-                    "public_url": public_url,
+                    "storage_path": clean_text(storage_path) if storage_path else None,
+                    "public_url": clean_text(public_url) if public_url else None,
                     "char_count": len(text),
                 },
             }
