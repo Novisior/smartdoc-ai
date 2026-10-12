@@ -111,11 +111,50 @@ def get_llm(api_key: str, model: str, temperature: float = 0.1) -> ChatGroq:
         max_retries=2,
     )
 
+_MATH_SPAN = re.compile(r"(\$\$.+?\$\$|\$[^$\n]+?\$)", re.S)
+_LATEX_CMD = re.compile(r"\\[A-Za-z]+")
+
+
+def _wrap_bare_latex(segment: str) -> str:
+    """Wrap (...) or [...] groups that contain LaTeX commands in $...$."""
+    out, i, n = [], 0, len(segment)
+    while i < n:
+        ch = segment[i]
+        if ch in "([":
+            close = ")" if ch == "(" else "]"
+            depth, j = 0, i
+            while j < n:
+                if segment[j] == ch:
+                    depth += 1
+                elif segment[j] == close:
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            if j < n:
+                inner = segment[i + 1 : j]
+                if _LATEX_CMD.search(inner) and "\n" not in inner:
+                    out.append(f"${inner.strip()}$")
+                    i = j + 1
+                    continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def normalize_math(text: str) -> str:
-    """Convert \\( \\) and \\[ \\] LaTeX delimiters into $ and $$ for Streamlit."""
-    text = re.sub(r"\\\[(.+?)\\\]", lambda m: f"\n$$\n{m.group(1).strip()}\n$$\n", text, flags=re.S)
+    """Make LaTeX from the model render in Streamlit."""
+    # \[ ... \] and \( ... \) -> $$ ... $$ and $ ... $
+    text = re.sub(
+        r"\\\[(.+?)\\\]",
+        lambda m: f"\n$$\n{m.group(1).strip()}\n$$\n",
+        text,
+        flags=re.S,
+    )
     text = re.sub(r"\\\((.+?)\\\)", lambda m: f"${m.group(1).strip()}$", text, flags=re.S)
-    return text
+    # Bare (\phi_A) or [ \phi_A = 1.33 ] that lost its backslashes or delimiters
+    parts = _MATH_SPAN.split(text)
+    return "".join(p if k % 2 else _wrap_bare_latex(p) for k, p in enumerate(parts))
     
 def answer_question(
     question: str,
@@ -150,7 +189,7 @@ def answer_question(
     chain = prompt | get_llm(groq_api_key, model, temperature)
     result = chain.invoke({"context": format_context(matches), "question": question})
 
-    answer = result.content.strip()
+    answer = normalize_math(result.content.strip())
     sources = build_sources(matches)
     return RAGResponse(
         answer=answer,
