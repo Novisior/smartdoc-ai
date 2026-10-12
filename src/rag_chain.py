@@ -22,6 +22,12 @@ Rules:
 - Only if the passages are unrelated to the question, reply: "I could not find this in the uploaded documents." Then name what the documents do cover.
 - Write in plain prose. Use short bullets only when listing several distinct items.
 
+Math formatting:
+- Write inline math with single dollar signs, like $\\phi_A = 1.33$, and display equations with double dollar signs on their own lines, like $$\\phi_i = \\sum_{{S}} w(S)\\,[v(S \\cup \\{{i\\}}) - v(S)]$$.
+- Never use \\( \\) or \\[ \\] for math.
+- Never put formulas or math inside markdown tables, because the | symbol breaks the table. Use a numbered list instead, with one calculation step per line.
+- For worked calculations (such as Shapley values), show each step on its own line and finish with a clear final answer.
+
 Context passages:
 {context}"""
 
@@ -105,7 +111,12 @@ def get_llm(api_key: str, model: str, temperature: float = 0.1) -> ChatGroq:
         max_retries=2,
     )
 
-
+def normalize_math(text: str) -> str:
+    """Convert \\( \\) and \\[ \\] LaTeX delimiters into $ and $$ for Streamlit."""
+    text = re.sub(r"\\\[(.+?)\\\]", lambda m: f"\n$$\n{m.group(1).strip()}\n$$\n", text, flags=re.S)
+    text = re.sub(r"\\\((.+?)\\\)", lambda m: f"${m.group(1).strip()}$", text, flags=re.S)
+    return text
+    
 def answer_question(
     question: str,
     store: SupabaseStore,
