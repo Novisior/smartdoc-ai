@@ -155,6 +155,38 @@ def normalize_math(text: str) -> str:
     # Bare (\phi_A) or [ \phi_A = 1.33 ] that lost its backslashes or delimiters
     parts = _MATH_SPAN.split(text)
     return "".join(p if k % 2 else _wrap_bare_latex(p) for k, p in enumerate(parts))
+
+_SPLIT = re.compile(
+    r"\b(?:and|vs\.?|versus|compare|comparison|difference between|differentiate|between|with)\b",
+    re.I,
+)
+
+
+def _sub_queries(question: str) -> list[str]:
+    """Split 'Compare LIME and SHAP' into ['LIME', 'SHAP'] style sub-queries."""
+    parts = [p.strip(" ,.?;:-") for p in _SPLIT.split(question)]
+    parts = [p for p in parts if len(p) >= 3]
+    return [f"{p} explanation" for p in parts] if len(parts) >= 2 else []
+
+
+def retrieve(question, store, embedder, k, source_filter=None):
+    """Search the full question plus each sub-topic, then merge without duplicates."""
+    queries = [question] + _sub_queries(question)
+    result_lists = []
+    for q in queries:
+        vec = embedder.embed_query(q)
+        result_lists.append(store.similarity_search(vec, k=k, source_filter=source_filter))
+
+    merged, seen = [], set()
+    for rank in range(k):  # round-robin so every sub-topic gets slots
+        for results in result_lists:
+            if rank < len(results):
+                item = results[rank]
+                key = item.get("id", item.get("content", "")[:80])
+                if key not in seen:
+                    seen.add(key)
+                    merged.append(item)
+    return merged[: max(k, len(queries) * 3)]
     
 def answer_question(
     question: str,
@@ -169,8 +201,7 @@ def answer_question(
     started = time.time()
 
     embedder = get_embedder()
-    query_vector = embedder.embed_query(question)
-    matches = store.similarity_search(query_vector, k=top_k, source_filter=source_filter)
+    matches = retrieve(question, store, embedder, top_k, source_filter)
 
     if not matches:
         return RAGResponse(
